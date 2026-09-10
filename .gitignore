@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+gateway/node_modules/
+
+# Next.js
+.next/
+out/
+
+# Build outputs
+gateway/dist/
+
+# Environment — NEVER commit secrets
+.env.local
+.env
+gateway/.env
+
+# Vercel
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+gateway/data/bars.json
