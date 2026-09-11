@@ -18,22 +18,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg-primary)" }}>
       {/* Sidebar */}
-      <aside className="w-60 flex-shrink-0 flex flex-col" style={{
-        background: "#ffffff",
-        borderRight: "1px solid var(--border)",
-        boxShadow: "1px 0 0 rgba(0,0,0,0.04)",
+      <aside className="w-56 flex-shrink-0 flex flex-col" style={{
+        background: "linear-gradient(180deg, #f97316 0%, #ea580c 100%)",
       }}>
         {/* Brand */}
-        <div className="px-5 py-5 border-b" style={{ borderColor: "var(--border)" }}>
+        <div className="px-5 py-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-black flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}>A</div>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-orange-500 text-sm font-black flex-shrink-0"
+              style={{ background: "rgba(255,255,255,0.95)" }}>A</div>
             <div>
-              <p className="text-[9px] tracking-[0.25em] font-semibold" style={{ color: "var(--text-muted)" }}>AVLFX</p>
-              <h1 className="text-[13px] font-black tracking-wider" style={{ color: "var(--text-primary)" }}>CONSOLE</h1>
+              <p className="text-[9px] tracking-[0.25em] font-semibold" style={{ color: "rgba(255,255,255,0.6)" }}>AVLFX</p>
+              <h1 className="text-[13px] font-black tracking-wider text-white">CONSOLE</h1>
             </div>
           </div>
-          <p className="text-[9px] mt-3 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[9px] mt-3 leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
             管理者専用コントロールパネル
           </p>
         </div>
@@ -42,21 +40,23 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {NAV.map(n => (
             <Link key={n.href} href={n.href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors"
-              style={{ color: "var(--text-secondary)" }}
-              onMouseEnter={undefined}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all"
+              style={{
+                color: "rgba(255,255,255,0.85)",
+                background: "transparent",
+              }}
             >
-              <span className="w-5 text-center text-base flex-shrink-0">{n.icon}</span>
+              <span className="w-5 text-center text-base flex-shrink-0 opacity-90">{n.icon}</span>
               <span className="font-medium text-[13px]">{n.label}</span>
             </Link>
           ))}
         </nav>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.15)" }}>
           <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent-green)" }} />
-            <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>管理者アクセス</p>
+            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "rgba(255,255,255,0.7)" }} />
+            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.55)" }}>管理者アクセス</p>
           </div>
         </div>
       </aside>
