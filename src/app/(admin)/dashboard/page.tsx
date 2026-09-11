@@ -50,21 +50,25 @@ async function fetchSupabaseStatus() {
 
 function StatusBadge({ status }: { status: "ok" | "warn" | "error" | "unknown" }) {
   const cfg = {
-    ok:      { label: "正常",   color: "#00ff88", bg: "rgba(0,255,136,0.1)" },
-    warn:    { label: "注意",   color: "#fbbf24", bg: "rgba(251,191,36,0.1)" },
-    error:   { label: "エラー", color: "#f87171", bg: "rgba(248,113,113,0.1)" },
-    unknown: { label: "不明",   color: "#94a3b8", bg: "rgba(148,163,184,0.1)" },
+    ok:      { label: "正常",   color: "#16a34a", bg: "rgba(22,163,74,0.08)" },
+    warn:    { label: "注意",   color: "#d97706", bg: "rgba(217,119,6,0.08)" },
+    error:   { label: "エラー", color: "#dc2626", bg: "rgba(220,38,38,0.08)" },
+    unknown: { label: "不明",   color: "#9a9a9a", bg: "rgba(0,0,0,0.05)" },
   }[status];
   return (
-    <span className="px-2 py-0.5 rounded text-[9px] font-black tracking-widest"
+    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold"
       style={{ color: cfg.color, background: cfg.bg }}>{cfg.label}</span>
   );
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-      <p className="text-[9px] font-black tracking-widest mb-4" style={{ color: "var(--text-muted)" }}>{title}</p>
+    <div className="rounded-2xl p-5" style={{
+      background: "#ffffff",
+      border: "1px solid rgba(0,0,0,0.06)",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+    }}>
+      <p className="text-[10px] font-bold tracking-widest mb-4 uppercase" style={{ color: "var(--text-muted)" }}>{title}</p>
       {children}
     </div>
   );
@@ -72,11 +76,11 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 function Row({ label, value, sub, status }: { label: string; value: string; sub?: string; status?: "ok" | "warn" | "error" | "unknown" }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{label}</span>
+    <div className="flex items-center justify-between py-2.5 border-b" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
+      <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{label}</span>
       <div className="flex items-center gap-2">
         <div className="text-right">
-          <span className="text-xs font-mono" style={{ color: "var(--text-primary)" }}>{value}</span>
+          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{value}</span>
           {sub && <p className="text-[9px]" style={{ color: "var(--text-muted)" }}>{sub}</p>}
         </div>
         {status && <StatusBadge status={status} />}
@@ -104,8 +108,8 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-black tracking-widest" style={{ color: "var(--text-primary)" }}>ダッシュボード</h2>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>AVL-FX プラットフォーム管理 — 管理者専用</p>
+        <h2 className="text-2xl font-black" style={{ color: "var(--text-primary)" }}>ダッシュボード</h2>
+        <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>AVL-FX プラットフォーム管理 — 管理者専用</p>
       </div>
 
       {/* Summary cards */}
@@ -116,10 +120,14 @@ export default async function DashboardPage() {
           { label: "Supabase",        status: (sbStatus.ok ? "ok" : "error") as "ok"|"error", value: sbStatus.ok ? "正常" : "エラー" },
           { label: "蓄積バー総数",      status: "ok" as "ok",                                   value: sbStatus.totalRows.toLocaleString() + " 本" },
         ].map(item => (
-          <div key={item.label} className="rounded-xl p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-            <p className="text-[8px] tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>{item.label}</p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-black" style={{ color: "var(--text-primary)" }}>{item.value}</span>
+          <div key={item.label} className="rounded-2xl p-5" style={{
+            background: "#ffffff",
+            border: "1px solid rgba(0,0,0,0.06)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          }}>
+            <p className="text-[10px] font-semibold tracking-wide mb-3 uppercase" style={{ color: "var(--text-muted)" }}>{item.label}</p>
+            <div className="flex items-end justify-between gap-2">
+              <span className="text-base font-bold" style={{ color: "var(--text-primary)" }}>{item.value}</span>
               <StatusBadge status={item.status} />
             </div>
           </div>
@@ -151,25 +159,28 @@ export default async function DashboardPage() {
         </Card>
 
         {/* Architecture */}
-        <Card title="データフロー (概要)">
-          <div className="text-xs space-y-2.5" style={{ color: "var(--text-secondary)" }}>
+        <Card title="データフロー">
+          <div className="space-y-2">
             {[
               { icon: "🖥️", text: "Admin MT5", sub: "AVL_DataManager EA が稼働中" },
-              { icon: "↓",  text: "",          sub: "" },
-              { icon: "🔀", text: "ゲートウェイ (Railway)", sub: "Tick・バーデータを受信してSupabaseへ保存" },
-              { icon: "↓",  text: "",          sub: "" },
-              { icon: "🗄️", text: "Supabase (bar_data)", sub: "全ユーザー共有の市場データ置き場" },
-              { icon: "↓",  text: "",          sub: "" },
-              { icon: "📈", text: "Trading View", sub: "チャート・バックテスト・AI分析が参照" },
-            ].map((item, i) => item.text ? (
-              <div key={i} className="flex items-start gap-2">
-                <span>{item.icon}</span>
-                <div>
-                  <p className="font-bold" style={{ color: "var(--text-primary)" }}>{item.text}</p>
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{item.sub}</p>
+              { icon: "🔀", text: "Gateway (Railway)", sub: "手動同期ボタンでSupabaseへ保存" },
+              { icon: "🗄️", text: "Console Supabase (bar_data)", sub: "市場データ置き場" },
+            ].map((item, i, arr) => (
+              <div key={i}>
+                <div className="flex items-start gap-3 rounded-xl p-3" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.08)" }}>
+                  <span className="text-base">{item.icon}</span>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{item.text}</p>
+                    <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{item.sub}</p>
+                  </div>
                 </div>
+                {i < arr.length - 1 && (
+                  <div className="flex justify-center py-1">
+                    <span className="text-sm" style={{ color: "rgba(249,115,22,0.4)" }}>↓</span>
+                  </div>
+                )}
               </div>
-            ) : <p key={i} className="pl-1 text-[10px]" style={{ color: "var(--text-muted)" }}>　　　　↓</p>)}
+            ))}
           </div>
         </Card>
 

@@ -2,7 +2,6 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-// Server Action — Cookieにセッションを書き込む
 async function loginAction(formData: FormData) {
   "use server";
   const email    = formData.get("email") as string;
@@ -28,7 +27,6 @@ async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  // Admin check
   const { data: { user } } = await supabase.auth.getUser();
   const adminEmails = new Set(
     (process.env.ADMIN_EMAILS ?? "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean)
@@ -52,46 +50,70 @@ export default async function LoginPage({
     error ? decodeURIComponent(error) : "";
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-      <div className="w-full max-w-sm p-8 rounded-xl" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#f8f7f4" }}>
+      <div className="w-full max-w-sm">
+        {/* Logo */}
         <div className="text-center mb-8">
-          <p className="text-xs tracking-[0.3em] mb-1" style={{ color: "var(--text-muted)" }}>AVLFX</p>
-          <h1 className="text-xl font-black tracking-widest" style={{ color: "var(--accent-cyan)" }}>CONSOLE</h1>
-          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>管理者専用システム</p>
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 text-white text-2xl font-black"
+            style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}>A</div>
+          <h1 className="text-2xl font-black tracking-tight" style={{ color: "#1a1a1a" }}>AVLFX Console</h1>
+          <p className="text-sm mt-1" style={{ color: "#9a9a9a" }}>管理者専用システム</p>
         </div>
 
-        <form action={loginAction} className="space-y-4">
-          <div>
-            <label className="block text-xs mb-1.5 tracking-widest" style={{ color: "var(--text-muted)" }}>
-              メールアドレス
-            </label>
-            <input
-              name="email" type="email" required autoComplete="email"
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs mb-1.5 tracking-widest" style={{ color: "var(--text-muted)" }}>
-              パスワード
-            </label>
-            <input
-              name="password" type="password" required autoComplete="current-password"
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-            />
-          </div>
-          {errorMsg && (
-            <p className="text-xs" style={{ color: "#f87171" }}>{errorMsg}</p>
-          )}
-          <button
-            type="submit"
-            className="w-full py-2.5 rounded-lg text-xs font-black tracking-widest"
-            style={{ background: "rgba(0,229,255,0.12)", color: "var(--accent-cyan)", border: "1px solid rgba(0,229,255,0.3)", cursor: "pointer" }}
-          >
-            ログイン →
-          </button>
-        </form>
+        {/* Card */}
+        <div className="rounded-2xl p-8" style={{
+          background: "#ffffff",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+        }}>
+          <form action={loginAction} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold mb-2" style={{ color: "#4a4a4a" }}>
+                メールアドレス
+              </label>
+              <input
+                name="email" type="email" required autoComplete="email"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
+                style={{
+                  background: "#f8f7f4",
+                  border: "1.5px solid rgba(0,0,0,0.1)",
+                  color: "#1a1a1a",
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-2" style={{ color: "#4a4a4a" }}>
+                パスワード
+              </label>
+              <input
+                name="password" type="password" required autoComplete="current-password"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
+                style={{
+                  background: "#f8f7f4",
+                  border: "1.5px solid rgba(0,0,0,0.1)",
+                  color: "#1a1a1a",
+                }}
+              />
+            </div>
+
+            {errorMsg && (
+              <div className="rounded-xl px-4 py-3" style={{ background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.2)" }}>
+                <p className="text-sm" style={{ color: "#dc2626" }}>{errorMsg}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl text-sm font-bold text-white transition-all"
+              style={{
+                background: "linear-gradient(135deg, #f97316, #ea580c)",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(249,115,22,0.3)",
+              }}
+            >
+              ログイン
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
