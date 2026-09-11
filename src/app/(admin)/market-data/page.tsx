@@ -1,4 +1,5 @@
 import { getAdminSupabase } from "@/lib/admin-auth";
+import { SyncButton } from "@/components/SyncButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,21 @@ async function getLatestBars() {
   return data ?? [];
 }
 
+async function getGatewayMemoryBars(): Promise<number> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/market-data/status`, {
+      headers: { "x-gateway-secret": GATEWAY_SECRET },
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return 0;
+    const d = await res.json() as { symbols?: Record<string, { count: number }> };
+    return Object.values(d.symbols ?? {}).reduce((s, v) => s + v.count, 0);
+  } catch { return 0; }
+}
+
 export default async function MarketDataPage() {
-  const [rt, bars] = await Promise.all([getRealtimeData(), getLatestBars()]);
+  const [rt, bars, memoryBars] = await Promise.all([getRealtimeData(), getLatestBars(), getGatewayMemoryBars()]);
 
   // シンボル別最新バー
   const latestBySymbolTF = new Map<string, { time: string; close: number }>();
@@ -52,6 +66,9 @@ export default async function MarketDataPage() {
         <h2 className="text-lg font-black tracking-widest" style={{ color: "var(--text-primary)" }}>市場データ</h2>
         <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Admin MT5 DataManager経由のリアルタイム市場データ</p>
       </div>
+
+      {/* Sync Button */}
+      <SyncButton gatewayMemoryBars={memoryBars} />
 
       {/* Account Info */}
       {account && (

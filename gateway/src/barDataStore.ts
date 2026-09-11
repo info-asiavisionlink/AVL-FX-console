@@ -1,31 +1,17 @@
 // =================================================================
 // barDataStore.ts — Supabase bar_data 永続化モジュール
 //
-// 責務:
-//   - bar_data テーブルへの UPSERT（bulk / single）
-//   - バッチ分割でSupabaseレート制限を回避
-//   - エラー時もGatewayの通常処理を止めない（fire-and-forget）
-//   - SUPABASE_URL / SUPABASE_SERVICE_KEY 未設定時は無効化
-//
-// Timezone:
-//   bar.time は UTC ミリ秒（MqlRates.time × 1000）
-//   new Date(bar.time).toISOString() でそのまま time_utc に保存
-//   offset 変換不要（H4バーがUTC境界に整列していることで実証済み）
+// 設計方針（Console Gateway）:
+//   自動同期 OFF — ユーザーが Console で手動ボタンを押した時のみ同期
+//   差分同期 — 前回保存以降の新しいバーのみをUPSERT
+//   ブローカーsuffix正規化 — GOLD# → GOLD（#以降を除去）
 // =================================================================
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import ws from "ws";
 
-// ------------------------------------------------------------------
-// 設定
-// ------------------------------------------------------------------
-
 const BATCH_SIZE = parseInt(process.env.SUPABASE_BATCH_SIZE ?? "500", 10);
 const BATCH_DELAY_MS = parseInt(process.env.SUPABASE_BATCH_DELAY_MS ?? "50", 10);
-
-// ------------------------------------------------------------------
-// Supabase クライアント（遅延初期化）
-// ------------------------------------------------------------------
 
 let _client: SupabaseClient | null = null;
 let _initialized = false;
@@ -36,27 +22,22 @@ function getClient(): SupabaseClient | null {
   _initialized = true;
 
   const url = process.env.SUPABASE_URL;
-  // env var 名のゆらぎに対応（SUPABASE_SERVICE_KEY / SUPABASE_SERVICE_ROLE_KEY どちらでも可）
   const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !key) {
-    console.warn("[barData] SUPABASE_URL / SUPABASE_SERVICE_KEY(またはSUPABASE_SERVICE_ROLE_KEY) 未設定 → bar_data保存スキップ");
+    console.warn("[barData] SUPABASE_URL / SUPABASE_SERVICE_KEY 未設定 → 手動同期も無効");
     return null;
   }
 
   _client = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    realtime: { transport: ws as any }, // Node.js 20 は native WebSocket 非対応のため ws を指定
+    realtime: { transport: ws as any },
   });
   _enabled = true;
-  console.log("[barData] Supabase接続準備完了 → bar_data に永続化します");
+  console.log("[barData] Supabase接続準備完了 → 手動同期ボタンで保存します");
   return _client;
 }
-
-// ------------------------------------------------------------------
-// 内部型
-// ------------------------------------------------------------------
 
 export interface BarRecord {
   time:   number; // UTC ミリ秒
@@ -70,7 +51,7 @@ export interface BarRecord {
 interface BarRow {
   symbol:    string;
   timeframe: string;
-  time_utc:  string; // UTC ISO 文字列
+  time_utc:  string;
   open:      number;
   high:      number;
   low:       number;
@@ -78,11 +59,16 @@ interface BarRow {
   volume:    number;
 }
 
+/** ブローカーsuffix除去: "GOLD#" → "GOLD", "EURUSD.r" → "EURUSD" */
+function normalizeSymbol(symbol: string): string {
+  return symbol.replace(/[#.].*$/, "").toUpperCase();
+}
+
 function toRow(symbol: string, timeframe: string, bar: BarRecord): BarRow {
   return {
-    symbol:    symbol.toUpperCase(),
+    symbol:    normalizeSymbol(symbol),
     timeframe: timeframe.toUpperCase(),
-    time_utc:  new Date(bar.time).toISOString(), // UTC ms → ISO (UTC)
+    time_utc:  new Date(bar.time).toISOString(),
     open:      bar.open,
     high:      bar.high,
     low:       bar.low,
@@ -96,80 +82,95 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// upsertBulkBars — 起動時 bulk 送信 / 定期再送に使用
-// バッチ分割して Supabase に UPSERT する
+// 差分同期 — Supabaseに存在しない新しいバーのみUPSERT
 // ------------------------------------------------------------------
 
-export async function upsertBulkBars(
-  symbol:    string,
-  timeframe: string,
-  bars:      BarRecord[]
-): Promise<void> {
+export interface SyncResult {
+  total:    number;
+  byKey:    Record<string, number>;
+  skipped:  number;
+  duration: number;
+}
+
+/**
+ * 手動同期: Gateway memory → Supabase（差分のみ）
+ *
+ * 手順:
+ *   1. Supabaseから symbol×TFごとの最新 time_utc を取得
+ *   2. barStore内で最新time_utcより新しいバーだけを抽出
+ *   3. バッチUPSERT
+ */
+export async function upsertIncrementalBars(
+  barStore: Map<string, BarRecord[]>
+): Promise<SyncResult> {
   const db = getClient();
-  if (!db || bars.length === 0) return;
+  if (!db) return { total: 0, byKey: {}, skipped: 0, duration: 0 };
 
-  const rows = bars.map(b => toRow(symbol, timeframe, b));
-  const key  = `${symbol.toUpperCase()}:${timeframe.toUpperCase()}`;
-  let   saved = 0;
+  const startMs = Date.now();
 
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE);
+  // 1. Supabase の最新タイムスタンプを取得
+  const latestInSupabase = new Map<string, number>(); // "GOLD:M5" → ms
+  try {
+    const { data } = await db.rpc("get_bar_data_status");
+    if (Array.isArray(data)) {
+      for (const row of data as { symbol: string; timeframe: string; newest_bar: string }[]) {
+        const key = `${row.symbol.toUpperCase()}:${row.timeframe.toUpperCase()}`;
+        latestInSupabase.set(key, new Date(row.newest_bar).getTime());
+      }
+      console.log(`[barData] Supabase既存: ${latestInSupabase.size}シンボル×TF`);
+    }
+  } catch (e) {
+    console.warn("[barData] get_bar_data_status failed:", e);
+  }
 
-    const { error } = await db
-      .from("bar_data")
-      .upsert(batch, {
-        onConflict:       "symbol,timeframe,time_utc",
-        ignoreDuplicates: true,
-      });
+  let total = 0;
+  let skipped = 0;
+  const byKey: Record<string, number> = {};
 
-    if (error) {
-      console.warn(`[barData] bulk upsert error ${key} batch[${i}..${i + BATCH_SIZE}]:`, error.message);
-    } else {
-      saved += batch.length;
+  // 2. barStore の各キーで差分抽出 & UPSERT
+  for (const [rawKey, bars] of barStore.entries()) {
+    if (bars.length === 0) continue;
+
+    const [rawSymbol, timeframe] = rawKey.split(":");
+    const normalizedSymbol = normalizeSymbol(rawSymbol);
+    const normalizedKey = `${normalizedSymbol}:${timeframe}`;
+
+    const latestMs = latestInSupabase.get(normalizedKey) ?? 0;
+
+    // 最新time_utc より新しいバーだけ
+    const newBars = bars.filter(b => b.time > latestMs);
+
+    if (newBars.length === 0) {
+      skipped++;
+      continue;
     }
 
-    // バッチ間のwait（Supabase負荷軽減）
-    if (i + BATCH_SIZE < rows.length) await sleep(BATCH_DELAY_MS);
+    const rows = newBars.map(b => toRow(rawSymbol, timeframe, b));
+
+    // バッチUPSERT
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+      const { error } = await db
+        .from("bar_data")
+        .upsert(batch, { onConflict: "symbol,timeframe,time_utc", ignoreDuplicates: false });
+      if (error) {
+        console.warn(`[barData] upsert error ${normalizedKey}:`, error.message);
+      }
+      if (i + BATCH_SIZE < rows.length) await sleep(BATCH_DELAY_MS);
+    }
+
+    total += newBars.length;
+    byKey[normalizedKey] = newBars.length;
+    console.log(`[barData] ${normalizedKey}: ${newBars.length}本 追加 (全${bars.length}本中)`);
   }
 
-  if (saved > 0) {
-    console.log(`[barData] ${key}: ${saved}/${rows.length}本 → Supabase保存完了`);
-  }
+  const duration = Math.round((Date.now() - startMs) / 1000);
+  console.log(`[barData] 差分同期完了: ${total}本追加 / ${skipped}TFスキップ / ${duration}秒`);
+  return { total, byKey, skipped, duration };
 }
 
 // ------------------------------------------------------------------
-// upsertSingleBar — 確定バー1本を保存
-// upsertBar() で新バー検出時（前バーが確定した瞬間）に呼ぶ
-// ------------------------------------------------------------------
-
-export async function upsertSingleBar(
-  symbol:    string,
-  timeframe: string,
-  bar:       BarRecord
-): Promise<void> {
-  const db = getClient();
-  if (!db) return;
-
-  const row = toRow(symbol, timeframe, bar);
-
-  const { error } = await db
-    .from("bar_data")
-    .upsert(row, {
-      onConflict:       "symbol,timeframe,time_utc",
-      ignoreDuplicates: false, // 確定バーは値を上書きする
-    });
-
-  if (error) {
-    console.warn(
-      `[barData] single upsert error ${symbol}:${timeframe} ${row.time_utc}:`,
-      error.message
-    );
-  }
-}
-
-// ------------------------------------------------------------------
-// syncBarStoreToSupabase — 起動時の初回同期（全barStore → Supabase）
-// Gateway 起動時に既存 bars.json データを Supabase に一括保存
+// フル同期（起動時の初期化用のみ — 通常は使わない）
 // ------------------------------------------------------------------
 
 export async function syncBarStoreToSupabase(
@@ -178,42 +179,43 @@ export async function syncBarStoreToSupabase(
   const db = getClient();
   if (!db) return;
 
-  console.log("[barData] 起動時同期: barStore → Supabase bar_data ...");
+  console.log("[barData] フル同期開始 ...");
   let totalSaved = 0;
 
   for (const [key, bars] of barStore.entries()) {
     if (bars.length === 0) continue;
-
     const [symbol, timeframe] = key.split(":");
     if (!symbol || !timeframe) continue;
 
     const rows = bars.map(b => toRow(symbol, timeframe, b));
-
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
-      const { error } = await db
-        .from("bar_data")
-        .upsert(batch, {
-          onConflict:       "symbol,timeframe,time_utc",
-          ignoreDuplicates: true,
-        });
-
-      if (error) {
-        console.warn(`[barData] sync error ${key} batch[${i}]:`, error.message);
-      } else {
-        totalSaved += batch.length;
-      }
-
+      const { error } = await db.from("bar_data").upsert(batch, {
+        onConflict: "symbol,timeframe,time_utc",
+        ignoreDuplicates: true,
+      });
+      if (error) console.warn(`[barData] sync error ${key}:`, error.message);
+      else totalSaved += batch.length;
       await sleep(BATCH_DELAY_MS);
     }
   }
-
-  console.log(`[barData] 起動時同期完了: 合計 ${totalSaved} 本 → Supabase`);
+  console.log(`[barData] フル同期完了: ${totalSaved}本`);
 }
 
-// ------------------------------------------------------------------
-// isEnabled — 設定確認用
-// ------------------------------------------------------------------
+// 個別upsert（後方互換 — 自動同期OFFなので呼ばれない想定）
+export async function upsertBulkBars(
+  symbol: string, timeframe: string, bars: BarRecord[]
+): Promise<void> {
+  // 手動同期モードでは何もしない
+  void symbol; void timeframe; void bars;
+}
+
+export async function upsertSingleBar(
+  symbol: string, timeframe: string, bar: BarRecord
+): Promise<void> {
+  // 手動同期モードでは何もしない
+  void symbol; void timeframe; void bar;
+}
 
 export function isEnabled(): boolean {
   return getClient() !== null;

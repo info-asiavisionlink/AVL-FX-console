@@ -56,8 +56,7 @@ import cors from "cors";
 import fs   from "fs";
 import path from "path";
 import {
-  upsertBulkBars,
-  upsertSingleBar,
+  upsertIncrementalBars,
   syncBarStoreToSupabase,
   isEnabled as isSupabaseEnabled,
   type BarRecord,
@@ -396,16 +395,11 @@ app.post("/bars/bulk", auth, (req, res) => {
   if (!existing || bars.length >= existing.length) {
     const sorted = dedupAndSort(normalized);
     barStore.set(key, sorted.slice(-MAX_BARS));
-    console.log(`[Bulk] ${key}: ${sorted.length}本`);
+    console.log(`[Bulk] ${key}: ${sorted.length}本 (手動同期待ち)`);
     persistSave();
   }
 
-  if (normalized.length > 0) {
-    upsertBulkBars(symbol, timeframe, normalized as BarRecord[]).catch((err: unknown) => {
-      console.warn(`[barData] bulk upsert failed ${key}:`, err);
-    });
-  }
-
+  // 自動Supabase同期OFF — Console画面の「同期」ボタンで手動実行
   res.json({ ok: true });
 });
 
@@ -508,15 +502,33 @@ app.delete("/admin/bars/:symbol/:timeframe", (_req, res) => {
   res.json({ ok: true, key });
 });
 
-app.post("/admin/sync-to-supabase", auth, (_req, res) => {
+// 手動差分同期 — Console画面の「同期」ボタンから呼ばれる
+app.post("/admin/sync-to-supabase", auth, async (_req, res) => {
   if (!isSupabaseEnabled()) {
     res.status(503).json({ error: "Supabase 未設定" });
     return;
   }
-  syncBarStoreToSupabase(barStore as unknown as Map<string, BarRecord[]>).catch((err: unknown) => {
-    console.warn("[barData] sync-to-supabase error:", err);
-  });
-  res.json({ ok: true, message: "同期をバックグラウンドで開始しました" });
+
+  const totalMemory = Array.from(barStore.values()).reduce((s, b) => s + b.length, 0);
+  if (totalMemory === 0) {
+    res.json({ ok: true, total: 0, byKey: {}, skipped: 0, duration: 0, message: "Gatewayにデータなし。先にMT5 EAをアタッチしてください。" });
+    return;
+  }
+
+  try {
+    const result = await upsertIncrementalBars(barStore as unknown as Map<string, import("./barDataStore").BarRecord[]>);
+    res.json({
+      ok: true,
+      ...result,
+      memoryBars: totalMemory,
+      message: result.total > 0
+        ? `${result.total}本の新しいバーをSupabaseに保存しました`
+        : "新しいバーはありません（既にすべて保存済み）",
+    });
+  } catch (e) {
+    console.error("[sync] error:", e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 // -----------------------------------------------------------------
@@ -756,11 +768,7 @@ function upsertBar(symbol: string, timeframe: string, rawBar: Bar & { symbol?: s
   if (last && last.time === bar.time) {
     bars[bars.length - 1] = { time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume };
   } else {
-    if (last) {
-      upsertSingleBar(symbol, timeframe, last as BarRecord).catch((err: unknown) => {
-        console.warn(`[barData] confirmed bar upsert failed ${symbol}:${timeframe}:`, err);
-      });
-    }
+    // 自動Supabase同期OFF — Console画面の「同期」ボタンで一括実行
     bars.push({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
     if (bars.length > MAX_BARS) bars.shift();
   }
