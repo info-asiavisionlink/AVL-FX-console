@@ -27,3 +27,6 @@ Thumbs.db
 # Logs
 *.log
 gateway/data/bars.json
+
+# Supabase temp files
+supabase/.temp/
