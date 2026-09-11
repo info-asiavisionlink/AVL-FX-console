@@ -30,3 +30,5 @@ gateway/data/bars.json
 
 # Supabase temp files
 supabase/.temp/
+.vercel
+.env*
