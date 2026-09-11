@@ -87,7 +87,7 @@ export default async function LoginPage({
           <button
             type="submit"
             className="w-full py-2.5 rounded-lg text-xs font-black tracking-widest"
-            style={{ background: "rgba(0,229,255,0.12)", color: "var(--accent-cyan)", border: "1px solid rgba(0,229,255,0.3)" }}
+            style={{ background: "rgba(0,229,255,0.12)", color: "var(--accent-cyan)", border: "1px solid rgba(0,229,255,0.3)", cursor: "pointer" }}
           >
             ログイン →
           </button>
