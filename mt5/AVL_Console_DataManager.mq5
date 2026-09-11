@@ -25,8 +25,8 @@
 
 //--- 入力パラメーター
 sinput group "=== AVL Market Server 接続設定 ==="
-input string InpServerURL    = "http://127.0.0.1:8080";
-input string InpServerSecret = "";
+input string InpServerURL    = "https://avl-fx-console-production.up.railway.app";
+input string InpServerSecret = "27b2ac63aa0000653e6e50832ca5e6daf2e344e718af6276949439652dfec4d9";
 
 sinput group "=== Tick Stream ==="
 input bool InpTickEnabled    = true;
