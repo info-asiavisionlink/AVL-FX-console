@@ -5,6 +5,7 @@ import { CUSTOMER_STATUS, STATUS_OPTIONS, type CustomerStatus } from "@/lib/cust
 import { CustomerEditForm } from "./CustomerEditForm";
 import { CustomerSystemCard, AddSystemForm } from "@/components/CustomerSystemCard";
 import { ContractCard } from "@/components/ContractCard";
+import { ResearchTokenCard } from "@/components/ResearchTokenCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +27,16 @@ async function getContract(customerId: string) {
   return data ?? null;
 }
 
+async function getTokens(customerId: string) {
+  const sb = await getAdminSupabase();
+  const { data } = await sb
+    .from("system_tokens")
+    .select("id, token_name, token, is_active, last_used_at, created_at, customer_system_id, notes")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
 async function getSystems(customerId: string) {
   const sb = await getAdminSupabase();
   const { data } = await sb
@@ -38,7 +49,7 @@ async function getSystems(customerId: string) {
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [customer, systems, contract] = await Promise.all([getCustomer(id), getSystems(id), getContract(id)]);
+  const [customer, systems, contract, tokens] = await Promise.all([getCustomer(id), getSystems(id), getContract(id), getTokens(id)]);
   if (!customer) notFound();
 
   const cfg = CUSTOMER_STATUS[(customer.status as CustomerStatus)] ?? CUSTOMER_STATUS.LEAD;
@@ -147,6 +158,18 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </p>
         </div>
         <ContractCard contract={contract} customerId={id} />
+      </div>
+
+      {/* Research API トークン */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-base font-black" style={{ color: "#1a1a1a" }}>Research API アクセス</h3>
+          <p className="text-xs mt-0.5" style={{ color: "#9a9a9a" }}>
+            Trading View → Research API 認証トークン管理
+          </p>
+        </div>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <ResearchTokenCard tokens={tokens as any} customerId={id} />
       </div>
 
       {/* 編集フォーム */}
