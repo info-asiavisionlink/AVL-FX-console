@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CUSTOMER_STATUS, STATUS_OPTIONS, type CustomerStatus } from "@/lib/customer-status";
 import { CustomerEditForm } from "./CustomerEditForm";
 import { CustomerSystemCard, AddSystemForm } from "@/components/CustomerSystemCard";
+import { ContractCard } from "@/components/ContractCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,6 +14,16 @@ async function getCustomer(id: string) {
   const { data, error } = await sb.from("customers").select("*").eq("id", id).single();
   if (error || !data) return null;
   return data;
+}
+
+async function getContract(customerId: string) {
+  const sb = await getAdminSupabase();
+  const { data } = await sb
+    .from("customer_contracts")
+    .select("*")
+    .eq("customer_id", customerId)
+    .single();
+  return data ?? null;
 }
 
 async function getSystems(customerId: string) {
@@ -27,7 +38,7 @@ async function getSystems(customerId: string) {
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [customer, systems] = await Promise.all([getCustomer(id), getSystems(id)]);
+  const [customer, systems, contract] = await Promise.all([getCustomer(id), getSystems(id), getContract(id)]);
   if (!customer) notFound();
 
   const cfg = CUSTOMER_STATUS[(customer.status as CustomerStatus)] ?? CUSTOMER_STATUS.LEAD;
@@ -125,6 +136,17 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CustomerSystemCard key={sys.id} sys={sys} customerId={id} />
         ))}
         <AddSystemForm customerId={id} />
+      </div>
+
+      {/* 契約情報 */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-base font-black" style={{ color: "#1a1a1a" }}>契約情報</h3>
+          <p className="text-xs mt-0.5" style={{ color: "#9a9a9a" }}>
+            開発費・月額管理費・Research Access・移管状態
+          </p>
+        </div>
+        <ContractCard contract={contract} customerId={id} />
       </div>
 
       {/* 編集フォーム */}
