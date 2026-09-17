@@ -88,6 +88,14 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             }}>{cfg.label}</span>
           </div>
         </div>
+        {/* クイックリンク */}
+        <div className="flex gap-2">
+          <Link href={`/customers/${id}/deployments`}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
+            style={{ background: "rgba(249,115,22,0.08)", color: "#f97316", border: "1px solid rgba(249,115,22,0.2)" }}>
+            🚀 デプロイ履歴
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
