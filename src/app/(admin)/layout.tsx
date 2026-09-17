@@ -7,6 +7,7 @@ const NAV = [
   { href: "/gold-data",    label: "GOLDデータ",          icon: "🥇" },
   { href: "/customers",    label: "顧客管理",            icon: "👥" },
   { href: "/strategies",   label: "Strategy Registry",   icon: "🧠" },
+  { href: "/monitoring",   label: "System Monitoring",   icon: "📡" },
   { href: "/market-data",  label: "市場データ（同期）",  icon: "📡" },
   { href: "/historical",   label: "ヒストリカルデータ",  icon: "📁" },
   { href: "/mt5",          label: "MT5接続",             icon: "🖥️" },
