@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { CUSTOMER_STATUS, STATUS_OPTIONS, type CustomerStatus } from "@/lib/customer-status";
 import { CustomerEditForm } from "./CustomerEditForm";
+import { CustomerSystemCard, AddSystemForm } from "@/components/CustomerSystemCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,9 +15,19 @@ async function getCustomer(id: string) {
   return data;
 }
 
+async function getSystems(customerId: string) {
+  const sb = await getAdminSupabase();
+  const { data } = await sb
+    .from("customer_systems")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("created_at");
+  return data ?? [];
+}
+
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const customer = await getCustomer(id);
+  const [customer, systems] = await Promise.all([getCustomer(id), getSystems(id)]);
   if (!customer) notFound();
 
   const cfg = CUSTOMER_STATUS[(customer.status as CustomerStatus)] ?? CUSTOMER_STATUS.LEAD;
@@ -94,6 +105,27 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <p className="text-sm whitespace-pre-wrap" style={{ color: "#4a4a4a" }}>{customer.notes}</p>
         </div>
       )}
+
+      {/* System Registry */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-black" style={{ color: "#1a1a1a" }}>専用Systemセット</h3>
+            <p className="text-xs mt-0.5" style={{ color: "#9a9a9a" }}>
+              顧客に提供した独立Systemのメタデータ（Secretは保存しない）
+            </p>
+          </div>
+          <span className="text-xs font-semibold px-2 py-1 rounded"
+            style={{ background: "rgba(0,0,0,0.05)", color: "#9a9a9a" }}>
+            {systems.length} セット
+          </span>
+        </div>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        {systems.map((sys: any) => (
+          <CustomerSystemCard key={sys.id} sys={sys} customerId={id} />
+        ))}
+        <AddSystemForm customerId={id} />
+      </div>
 
       {/* 編集フォーム */}
       <CustomerEditForm
