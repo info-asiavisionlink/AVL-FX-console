@@ -4,8 +4,9 @@ import Link from "next/link";
 
 const NAV = [
   { href: "/dashboard",    label: "ダッシュボード",     icon: "📊" },
-  { href: "/market-data",  label: "市場データ",          icon: "📡" },
-  { href: "/historical",   label: "ヒストリカルデータ",   icon: "📁" },
+  { href: "/gold-data",    label: "GOLDデータ",          icon: "🥇" },
+  { href: "/market-data",  label: "市場データ（同期）",  icon: "📡" },
+  { href: "/historical",   label: "ヒストリカルデータ",  icon: "📁" },
   { href: "/mt5",          label: "MT5接続",             icon: "🖥️" },
   { href: "/gateway",      label: "ゲートウェイ",         icon: "🔀" },
   { href: "/system",       label: "システム診断",         icon: "🔍" },
