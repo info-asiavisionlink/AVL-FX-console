@@ -1,7 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth",
+  "/api/research",        // Research API: X-Research-Token で独自認証
+  "/api/monitoring/report", // Heartbeat: X-System-Token で独自認証
+];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
