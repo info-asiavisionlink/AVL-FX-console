@@ -1,161 +1,225 @@
-import { NextRequest, NextResponse } from "next/server";
-import { authenticateResearch, ResearchAuthError, logResearchAccess } from "@/lib/research-auth";
-import { getAdminSupabase } from "@/lib/admin-auth";
-
-export const dynamic = "force-dynamic";
-
+// =================================================================
 // POST /api/research/backtest
-// Backtest実行エンドポイント
-// Bar生データは返却せず、集計結果（PnL / 勝率 / 最大DD等）のみ返却
+//
+// Trading View → Console 専用バックテスト API
+//
+// 認証方法（2系統）:
+//   1. X-Backtest-Secret: {CONSOLE_GATEWAY_SECRET}  ← Trading View server→server
+//   2. X-Research-Token: {token}                    ← サブスク顧客向け（従来）
+//
+// データソース: Console Supabase の bar_data（DataManager EA から蓄積）
+// エンジン:     Trading View と同じ BacktestEngine を移植
+// =================================================================
+
+import { NextRequest, NextResponse }                from "next/server";
+import { authenticateResearch, ResearchAuthError, logResearchAccess } from "@/lib/research-auth";
+import { getAdminSupabase }                          from "@/lib/admin-auth";
+import { StrategySpecSchema }                        from "@/lib/strategySchema";
+import type { StrategySpec }                         from "@/lib/strategySchema";
+import type { Bar }                                  from "@/lib/backtest/analysis-types";
+import { runBacktest }                               from "@/lib/backtest/BacktestEngine";
+import { generateReport }                            from "@/lib/backtest/BacktestReporter";
+
+export const runtime    = "nodejs";
+export const maxDuration = 60;
+export const dynamic    = "force-dynamic";
+
+// ------------------------------------------------------------------
+// Server-to-server 認証: X-Backtest-Secret
+// ------------------------------------------------------------------
+function isServerAuth(req: NextRequest): boolean {
+  const secret = process.env.CONSOLE_GATEWAY_SECRET ?? "";
+  if (!secret) return false;
+  const provided = req.headers.get("x-backtest-secret") ?? "";
+  return provided === secret;
+}
+
+// ------------------------------------------------------------------
+// バーデータ取得（ページネーション対応）
+// ------------------------------------------------------------------
+const PAGE = 1000;
+
+async function fetchBars(symbol: string, timeframe: string): Promise<Bar[]> {
+  const sb = await getAdminSupabase();
+  type Row = { time_utc: string; open: number; high: number; low: number; close: number; volume: number };
+
+  const all: Row[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const { data, error } = await sb
+      .from("bar_data")
+      .select("time_utc, open, high, low, close, volume")
+      .eq("symbol", symbol)
+      .eq("timeframe", timeframe)
+      .order("time_utc", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+
+    if (error) throw new Error(`bar_data fetch error (${symbol} ${timeframe}): ${error.message}`);
+    const rows = (data as Row[]) ?? [];
+    if (rows.length === 0) break;
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+
+  return all.map(r => ({
+    time:   new Date(r.time_utc).getTime(),
+    open:   Number(r.open),
+    high:   Number(r.high),
+    low:    Number(r.low),
+    close:  Number(r.close),
+    volume: r.volume ?? 0,
+  }));
+}
+
+// ------------------------------------------------------------------
+// 使用する全 timeframe を spec から収集
+// ------------------------------------------------------------------
+function collectTimeframes(spec: StrategySpec): string[] {
+  const tfs = new Set<string>(spec.timeframes);
+  for (const c of spec.entry_conditions.conditions) tfs.add(c.timeframe);
+  if (spec.filters?.trend_filter)  tfs.add(spec.filters.trend_filter.timeframe);
+  if (spec.filters?.trend_filters) spec.filters.trend_filters.forEach(tf => tfs.add(tf.timeframe));
+  return [...tfs];
+}
+
+// ------------------------------------------------------------------
+// ハンドラー
+// ------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
   let identity = null;
+  let isServer = false;
 
   try {
-    identity = await authenticateResearch(req);
+    // ── 認証 ─────────────────────────────────────────────────────
+    if (isServerAuth(req)) {
+      isServer = true;
+    } else {
+      identity = await authenticateResearch(req);
+    }
 
+    // ── リクエスト解析 ────────────────────────────────────────────
     const body = await req.json() as Record<string, unknown>;
-    const { strategy_spec, timeframe, from, to } = body;
+    const rawSpec = body.strategy_spec ?? body.spec;
 
-    if (!strategy_spec || typeof strategy_spec !== "object") {
-      return NextResponse.json({ error: "strategy_spec は必須です" }, { status: 400 });
-    }
-    if (!timeframe || !from || !to) {
-      return NextResponse.json({ error: "timeframe / from / to は必須です" }, { status: 400 });
+    if (!rawSpec || typeof rawSpec !== "object") {
+      return NextResponse.json({ success: false, error: "strategy_spec が必要です" }, { status: 400 });
     }
 
-    // Bar データ取得
-    const sb = await getAdminSupabase();
-    const { data: bars, error: barsErr } = await sb
-      .from("bar_data")
-      .select("time_utc, open, high, low, close, volume")
-      .eq("symbol", "GOLD")
-      .eq("timeframe", timeframe as string)
-      .gte("time_utc", from as string)
-      .lte("time_utc", to as string)
-      .order("time_utc", { ascending: true })
-      .limit(10000);
+    // UNSUPPORTED 条件を持つ spec は弾く
+    const validation = StrategySpecSchema.safeParse(rawSpec);
+    if (!validation.success) {
+      return NextResponse.json({ success: false, error: "Strategy Spec が無効です" }, { status: 422 });
+    }
+    const spec = validation.data;
 
-    if (barsErr) throw barsErr;
-    if (!bars || bars.length === 0) {
-      return NextResponse.json({ ok: false, error: "指定期間のデータがありません" }, { status: 404 });
+    const unsupported = spec.entry_conditions.conditions
+      .filter(c => c.condition?.startsWith("UNSUPPORTED:"))
+      .map(c => c.condition!.replace("UNSUPPORTED:", "").trim());
+
+    if (unsupported.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: "バックテスト未対応の条件が含まれています",
+        unsupported,
+      }, { status: 422 });
     }
 
-    // Backtest実行（簡易エンジン: strategy_specのentry/exit条件を評価）
-    const result = runBacktest(bars, strategy_spec as StrategySpec);
+    if (spec.symbols.length !== 1) {
+      return NextResponse.json({ success: false, error: "シンボルは1つのみ指定できます" }, { status: 400 });
+    }
 
-    const requestParams = {
-      timeframe, from, to,
-      bar_count: bars.length,
-      strategy_name: (strategy_spec as StrategySpec).name ?? "unnamed",
-    };
+    // ── バーデータ取得 ────────────────────────────────────────────
+    const symbol     = spec.symbols[0];  // e.g. "GOLD#"
+    const mainTf     = spec.timeframes[0];
+    const timeframes = collectTimeframes(spec);
 
-    await logResearchAccess({
-      customerId:    identity.customerId,
-      systemCode:    identity.systemCode,
-      endpoint:      "/api/research/backtest",
-      requestParams,
-      status:        "ALLOWED",
-      durationMs:    Date.now() - t0,
+    const barsByTf: Record<string, Bar[]> = {};
+    for (const tf of timeframes) {
+      barsByTf[tf] = await fetchBars(symbol, tf);
+      // データがなければ "GOLD" でも試みる（シンボル表記ゆれ対応）
+      if (barsByTf[tf].length === 0) {
+        const fallback = symbol.replace(/[#.].*$/, "").toUpperCase();
+        if (fallback !== symbol) {
+          barsByTf[tf] = await fetchBars(fallback, tf);
+        }
+      }
+    }
+
+    const mainBars = barsByTf[mainTf] ?? [];
+    if (mainBars.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: `バーデータが見つかりません: ${symbol} ${mainTf}`,
+      }, { status: 404 });
+    }
+
+    // ── バックテスト実行 ──────────────────────────────────────────
+    const engineResult = runBacktest({
+      spec,
+      symbol,
+      mainTimeframe:   mainTf,
+      barsByTimeframe: barsByTf,
+      initialBalance:  10_000,
+      fixedLot:        0.01,
     });
 
+    const report = generateReport({
+      engineResult,
+      periodLabel: "AVAILABLE",
+      barCount:    mainBars.length,
+    });
+
+    // ── 方向別集計 ────────────────────────────────────────────────
+    const buyTrades  = engineResult.trades.filter(t => t.direction === "BUY");
+    const sellTrades = engineResult.trades.filter(t => t.direction === "SELL");
+    const dirStat = (trades: typeof engineResult.trades) => ({
+      trades:  trades.length,
+      wins:    trades.filter(t => t.result === "WIN").length,
+      pips:    Math.round(trades.reduce((s, t) => s + t.pips, 0) * 10) / 10,
+      winRate: trades.length > 0
+        ? Math.round((trades.filter(t => t.result === "WIN").length / trades.length) * 1000) / 10
+        : 0,
+    });
+
+    // ── ログ記録（サブスク顧客のみ）──────────────────────────────
+    if (!isServer && identity) {
+      await logResearchAccess({
+        customerId:    identity.customerId,
+        systemCode:    identity.systemCode,
+        endpoint:      "/api/research/backtest",
+        requestParams: { symbol, timeframe: mainTf, strategyName: spec.name },
+        status:        "ALLOWED",
+        durationMs:    Date.now() - t0,
+      });
+    }
+
+    // ── レスポンス（Trading View の preview-backtest と同形式）────
     return NextResponse.json({
-      ok:          true,
-      bar_count:   bars.length,
-      timeframe,
-      from,
-      to,
-      result,
+      success:            true,
+      report,
+      trades:             engineResult.trades.slice(0, 1000),  // 最大1000件
+      barCount:           mainBars.length,
+      directionBreakdown: { buy: dirStat(buyTrades), sell: dirStat(sellTrades) },
+      warnings:           [],
     });
 
   } catch (err) {
     const isAuthErr = err instanceof ResearchAuthError;
-    await logResearchAccess({
-      customerId:    identity?.customerId ?? null,
-      systemCode:    identity?.systemCode ?? null,
-      endpoint:      "/api/research/backtest",
-      requestParams: {},
-      status:        isAuthErr ? "DENIED" : "ERROR",
-      denialReason:  isAuthErr ? err.reason : String(err),
-      durationMs:    Date.now() - t0,
-    });
-    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: isAuthErr ? 401 : 500 });
-  }
-}
-
-// ====================== 簡易バックテストエンジン ======================
-interface Bar {
-  time_utc: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-interface StrategySpec {
-  name?: string;
-  // 将来: entry_conditions, exit_conditions, filters, risk
-  [key: string]: unknown;
-}
-
-interface BacktestResult {
-  total_trades:     number;
-  winning_trades:   number;
-  losing_trades:    number;
-  win_rate:         number;
-  total_pnl_pips:   number;
-  max_drawdown_pips: number;
-  profit_factor:    number;
-  note:             string;
-}
-
-function runBacktest(bars: Bar[], _spec: StrategySpec): BacktestResult {
-  // Phase 1: 簡易エンジン（Trading View BacktestEngineの移植はC10で対応）
-  // 現在はランダムウォーク相当の統計でインターフェース疎通確認
-  if (bars.length < 10) {
-    return {
-      total_trades: 0, winning_trades: 0, losing_trades: 0,
-      win_rate: 0, total_pnl_pips: 0, max_drawdown_pips: 0, profit_factor: 0,
-      note: "データ不足（最低10本必要）",
-    };
-  }
-
-  // 単純移動平均クロス（デモ用簡易実装）
-  const period = 20;
-  let trades = 0, wins = 0, totalPnl = 0, maxDD = 0, peakPnl = 0;
-  let inPosition = false;
-  let entryPrice = 0;
-
-  for (let i = period; i < bars.length - 1; i++) {
-    const sma = bars.slice(i - period, i).reduce((s, b) => s + b.close, 0) / period;
-    const prevSma = bars.slice(i - period - 1, i - 1).reduce((s, b) => s + b.close, 0) / period;
-
-    if (!inPosition && bars[i].close > sma && bars[i - 1].close <= prevSma) {
-      inPosition = true; entryPrice = bars[i + 1].open;
-    } else if (inPosition && bars[i].close < sma) {
-      const pnl = (bars[i + 1].open - entryPrice) * 10;
-      totalPnl += pnl;
-      if (pnl > 0) wins++;
-      trades++;
-      inPosition = false;
-      if (totalPnl > peakPnl) peakPnl = totalPnl;
-      if (peakPnl - totalPnl > maxDD) maxDD = peakPnl - totalPnl;
+    if (!isServer && identity !== null) {
+      await logResearchAccess({
+        customerId:    identity?.customerId ?? null,
+        systemCode:    identity?.systemCode ?? null,
+        endpoint:      "/api/research/backtest",
+        requestParams: {},
+        status:        isAuthErr ? "DENIED" : "ERROR",
+        denialReason:  isAuthErr ? (err as ResearchAuthError).reason : String(err),
+        durationMs:    Date.now() - t0,
+      });
     }
+    const status = isAuthErr ? 401 : 500;
+    return NextResponse.json({ success: false, error: (err as Error).message }, { status });
   }
-
-  const losses = trades - wins;
-  const grossWin  = wins  > 0 ? (totalPnl > 0 ? totalPnl : 0) : 0;
-  const grossLoss = losses > 0 ? Math.abs(Math.min(totalPnl, 0)) : 1;
-
-  return {
-    total_trades:     trades,
-    winning_trades:   wins,
-    losing_trades:    losses,
-    win_rate:         trades > 0 ? Math.round((wins / trades) * 1000) / 10 : 0,
-    total_pnl_pips:   Math.round(totalPnl * 10) / 10,
-    max_drawdown_pips: Math.round(maxDD * 10) / 10,
-    profit_factor:    Math.round((grossWin / grossLoss) * 100) / 100,
-    note:             "Phase1: SMAクロス簡易エンジン。strategy_specのカスタム条件評価はPhase2（C10）で対応。",
-  };
 }
