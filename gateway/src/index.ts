@@ -261,6 +261,19 @@ function persistLoad(): void {
 
 setInterval(persistSave, 30_000);
 
+// 3時間ごとに Gateway → Supabase 自動同期
+const AUTO_SYNC_INTERVAL = 3 * 60 * 60 * 1000; // 3h
+setInterval(async () => {
+  if (!isSupabaseEnabled()) return;
+  console.log("[autoSync] 3時間自動同期を開始...");
+  try {
+    const result = await upsertIncrementalBars(barStore as unknown as Map<string, import("./barDataStore").BarRecord[]>);
+    console.log(`[autoSync] 完了: ${result.total}本を保存`);
+  } catch (e) {
+    console.error("[autoSync] エラー:", e);
+  }
+}, AUTO_SYNC_INTERVAL);
+
 // -----------------------------------------------------------------
 // インメモリストア
 // -----------------------------------------------------------------
