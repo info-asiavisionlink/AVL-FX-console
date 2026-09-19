@@ -7,6 +7,7 @@ import { CustomerSystemCard, AddSystemForm } from "@/components/CustomerSystemCa
 import { ContractCard } from "@/components/ContractCard";
 import { ResearchTokenCard } from "@/components/ResearchTokenCard";
 import { SubscriptionStatusBadge } from "@/components/SubscriptionStatusBadge";
+import { SetupPackageCard }        from "@/components/SetupPackageCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +27,40 @@ async function getContract(customerId: string) {
     .eq("customer_id", customerId)
     .single();
   return data ?? null;
+}
+
+async function getSetupStatus(email: string) {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const tvUrl = process.env.TV_SUPABASE_URL              ?? "";
+    const tvKey = process.env.TV_SUPABASE_SERVICE_ROLE_KEY ?? "";
+    if (!tvUrl || !tvKey) return null;
+
+    const tvSb = createClient(tvUrl, tvKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { data } = await tvSb.auth.admin.listUsers();
+    const tvUser   = data?.users?.find(u => u.email === email);
+    if (!tvUser) return null;
+
+    const { data: conn } = await tvSb
+      .from("mt5_connections")
+      .select("id, status, last_heartbeat_at")
+      .eq("user_id", tvUser.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    return {
+      app_url:        "https://avl-fx.vercel.app",
+      gateway_url:    process.env.TV_GATEWAY_URL ?? "https://remarkable-cooperation-production-7341.up.railway.app",
+      email,
+      tv_user_exists: true,
+      connection_id:  conn?.id ?? null,
+      research_enabled: false,
+      tokens: [] as { id: string; token_name: string; is_active: boolean; created_at: string }[],
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function getTokens(customerId: string) {
@@ -51,6 +86,7 @@ async function getSystems(customerId: string) {
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [customer, systems, contract, tokens] = await Promise.all([getCustomer(id), getSystems(id), getContract(id), getTokens(id)]);
+  const setupStatus = customer ? await getSetupStatus(customer.email) : null;
   if (!customer) notFound();
 
   const cfg = CUSTOMER_STATUS[(customer.status as CustomerStatus)] ?? CUSTOMER_STATUS.LEAD;
@@ -158,6 +194,17 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CustomerSystemCard key={sys.id} sys={sys} customerId={id} />
         ))}
         <AddSystemForm customerId={id} />
+      </div>
+
+      {/* セットアップパッケージ */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-base font-black" style={{ color: "#1a1a1a" }}>セットアップパッケージ</h3>
+          <p className="text-xs mt-0.5" style={{ color: "#9a9a9a" }}>
+            Trading View ログイン・MT5 接続情報を自動生成して顧客に送付
+          </p>
+        </div>
+        <SetupPackageCard customerId={id} existingSetup={setupStatus} />
       </div>
 
       {/* 契約情報 */}
