@@ -3,18 +3,19 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 const NAV = [
-  { href: "/dashboard",    label: "ダッシュボード",     icon: "📊" },
-  { href: "/gold-data",    label: "GOLDデータ",          icon: "🥇" },
-  { href: "/customers",    label: "顧客管理",            icon: "👥" },
-  { href: "/ea-list",      label: "EA リスト",           icon: "🤖" },
-  { href: "/strategies",   label: "Strategy Registry",   icon: "🧠" },
-  { href: "/monitoring",   label: "System Monitoring",   icon: "📡" },
-  { href: "/settings",     label: "設定 / 運用管理",      icon: "⚙️" },
-  { href: "/market-data",  label: "市場データ（同期）",  icon: "📡" },
-  { href: "/historical",   label: "ヒストリカルデータ",  icon: "📁" },
-  { href: "/mt5",          label: "MT5接続",             icon: "🖥️" },
-  { href: "/gateway",      label: "ゲートウェイ",         icon: "🔀" },
-  { href: "/system",       label: "システム診断",         icon: "🔍" },
+  { href: "/dashboard",         label: "ダッシュボード",       icon: "📊" },
+  { href: "/gold-data",         label: "GOLDデータ",            icon: "🥇" },
+  { href: "/trading-knowledge", label: "AIトレード知識",        icon: "🧠" },
+  { href: "/customers",         label: "顧客管理",              icon: "👥" },
+  { href: "/ea-list",           label: "EA リスト",             icon: "🤖" },
+  { href: "/strategies",        label: "Strategy Registry",     icon: "📋" },
+  { href: "/monitoring",        label: "System Monitoring",     icon: "📡" },
+  { href: "/settings",          label: "設定 / 運用管理",        icon: "⚙️" },
+  { href: "/market-data",       label: "市場データ（同期）",    icon: "🔄" },
+  { href: "/historical",        label: "ヒストリカルデータ",    icon: "📁" },
+  { href: "/mt5",               label: "MT5接続",               icon: "🖥️" },
+  { href: "/gateway",           label: "ゲートウェイ",           icon: "🔀" },
+  { href: "/system",            label: "システム診断",           icon: "🔍" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
