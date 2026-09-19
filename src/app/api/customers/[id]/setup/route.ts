@@ -139,6 +139,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         status:                "DISCONNECTED",
         broker:                "XM Trading",
         server_name:           "XMTrading-MT5",
+        mt5_login:             0,          // EA 接続時に自動更新される
         account_currency:      "USD",
         account_type:          "REAL",
         account_mode:          "HEDGING",
