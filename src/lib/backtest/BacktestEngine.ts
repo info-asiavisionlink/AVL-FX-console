@@ -396,10 +396,30 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   }
 
   // ── Precompute indicators ──────────────────────────────────
+  // EMA 期間を spec から TF 別に収集し、正しい EMA を事前計算する
+  function getSpecEmaPeriods(tf: string): { ema1Period: number; ema2Period: number } {
+    const periods = new Set<number>();
+    for (const c of spec.entry_conditions.conditions) {
+      if (c.timeframe === tf && c.indicator === "EMA" && c.period) periods.add(c.period);
+    }
+    if (spec.filters?.trend_filter?.timeframe === tf &&
+        spec.filters.trend_filter.indicator === "EMA" &&
+        spec.filters.trend_filter.period) {
+      periods.add(spec.filters.trend_filter.period);
+    }
+    if (spec.filters?.trend_filters) {
+      for (const f of spec.filters.trend_filters) {
+        if (f.timeframe === tf && f.indicator === "EMA" && f.period) periods.add(f.period);
+      }
+    }
+    const sorted = [...periods].sort((a, b) => a - b);
+    return { ema1Period: sorted[0] ?? 21, ema2Period: sorted[1] ?? 200 };
+  }
+
   const indicatorsByTf: Record<string, PrecomputedIndicators> = {};
   for (const [tf, bars] of Object.entries(barsByTimeframe)) {
     if (bars.length > 0) {
-      indicatorsByTf[tf] = precomputeIndicators(bars);
+      indicatorsByTf[tf] = precomputeIndicators(bars, getSpecEmaPeriods(tf));
     }
   }
 
