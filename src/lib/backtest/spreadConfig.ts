@@ -36,6 +36,8 @@ const CONFIGS: Record<string, SymbolConfig> = {
   // XAUUSD: pip=0.10, 1 pip × 100 oz/lot = $10
   XAUUSD: { digits: 2, pipSize: 0.10,   pipValuePerLot: 10.0, spreadPips: 30,  slippagePips: 5.0, contractSize: 100 },
   GOLD:   { digits: 2, pipSize: 0.10,   pipValuePerLot: 10.0, spreadPips: 30,  slippagePips: 5.0, contractSize: 100 },
+  // XM Trading で使用するシンボル名
+  "GOLD#": { digits: 2, pipSize: 0.10,  pipValuePerLot: 10.0, spreadPips: 30,  slippagePips: 5.0, contractSize: 100 },
 };
 
 const DEFAULT_CONFIG: SymbolConfig = {
@@ -44,7 +46,7 @@ const DEFAULT_CONFIG: SymbolConfig = {
 };
 
 export function getSymbolConfig(symbol: string): SymbolConfig {
-  return CONFIGS[symbol.toUpperCase()] ?? DEFAULT_CONFIG;
+  return CONFIGS[symbol.toUpperCase()] ?? CONFIGS[symbol] ?? DEFAULT_CONFIG;
 }
 
 /** price distance → pips */
