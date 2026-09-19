@@ -6,6 +6,7 @@ const NAV = [
   { href: "/dashboard",    label: "ダッシュボード",     icon: "📊" },
   { href: "/gold-data",    label: "GOLDデータ",          icon: "🥇" },
   { href: "/customers",    label: "顧客管理",            icon: "👥" },
+  { href: "/ea-list",      label: "EA リスト",           icon: "🤖" },
   { href: "/strategies",   label: "Strategy Registry",   icon: "🧠" },
   { href: "/monitoring",   label: "System Monitoring",   icon: "📡" },
   { href: "/settings",     label: "設定 / 運用管理",      icon: "⚙️" },
