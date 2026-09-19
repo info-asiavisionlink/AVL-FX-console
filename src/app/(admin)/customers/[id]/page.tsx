@@ -6,6 +6,7 @@ import { CustomerEditForm } from "./CustomerEditForm";
 import { CustomerSystemCard, AddSystemForm } from "@/components/CustomerSystemCard";
 import { ContractCard } from "@/components/ContractCard";
 import { ResearchTokenCard } from "@/components/ResearchTokenCard";
+import { SubscriptionStatusBadge } from "@/components/SubscriptionStatusBadge";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -86,6 +87,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               color: cfg.color, background: cfg.bg,
               padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700,
             }}>{cfg.label}</span>
+            {/* 月額ステータス */}
+            <SubscriptionStatusBadge customerId={id} contract={contract} />
           </div>
         </div>
         {/* クイックリンク */}

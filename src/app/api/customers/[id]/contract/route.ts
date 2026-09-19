@@ -37,6 +37,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(data, { status: 201 });
 }
 
+// PATCH: 月額ステータスのクイック更新（一覧・詳細のドロップダウンから）
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const { subscription_status } = await req.json() as { subscription_status: string };
+
+  let update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  if (subscription_status === "ACTIVE") {
+    update = { ...update, research_access_enabled: true };
+  } else if (subscription_status === "INACTIVE") {
+    update = { ...update, research_access_enabled: false };
+  } else if (subscription_status === "TRANSFERRED") {
+    update = { ...update, research_access_enabled: false, transfer_status: "COMPLETED" };
+  } else {
+    return NextResponse.json({ error: "不正なステータスです" }, { status: 400 });
+  }
+
+  const sb = await getAdminSupabase();
+
+  // 契約がなければ自動作成
+  const { data: existing } = await sb.from("customer_contracts").select("id").eq("customer_id", id).single();
+  if (!existing) {
+    await sb.from("customer_contracts").insert({ customer_id: id, ...update });
+    return NextResponse.json({ ok: true });
+  }
+
+  const { error } = await sb.from("customer_contracts").update(update).eq("customer_id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 // PUT: 契約情報更新
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
