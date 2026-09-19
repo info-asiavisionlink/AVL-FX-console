@@ -39,9 +39,18 @@ function isServerAuth(req: NextRequest): boolean {
 // ------------------------------------------------------------------
 const PAGE = 1000;
 
-async function fetchBars(symbol: string, timeframe: string): Promise<Bar[]> {
+// デフォルトで直近3年分のみ使用（バックテスト期間を現実的な範囲に制限）
+function getDefaultStartDate(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 3);
+  return d.toISOString().slice(0, 10) + "T00:00:00Z";
+}
+
+async function fetchBars(symbol: string, timeframe: string, startDate?: string): Promise<Bar[]> {
   const sb = await getAdminSupabase();
   type Row = { time_utc: string; open: number; high: number; low: number; close: number; volume: number };
+
+  const since = startDate ?? getDefaultStartDate();
 
   const all: Row[] = [];
   let offset = 0;
@@ -52,6 +61,7 @@ async function fetchBars(symbol: string, timeframe: string): Promise<Bar[]> {
       .select("time_utc, open, high, low, close, volume")
       .eq("symbol", symbol)
       .eq("timeframe", timeframe)
+      .gte("time_utc", since)
       .order("time_utc", { ascending: true })
       .range(offset, offset + PAGE - 1);
 
@@ -136,14 +146,18 @@ export async function POST(req: NextRequest) {
     const mainTf     = spec.timeframes[0];
     const timeframes = collectTimeframes(spec);
 
+    // リクエストで start_date 指定があれば使う、なければデフォルト3年
+    const startDate: string | undefined =
+      typeof body.start_date === "string" ? body.start_date : getDefaultStartDate();
+
     const barsByTf: Record<string, Bar[]> = {};
     for (const tf of timeframes) {
-      barsByTf[tf] = await fetchBars(symbol, tf);
+      barsByTf[tf] = await fetchBars(symbol, tf, startDate);
       // データがなければ "GOLD" でも試みる（シンボル表記ゆれ対応）
       if (barsByTf[tf].length === 0) {
         const fallback = symbol.replace(/[#.].*$/, "").toUpperCase();
         if (fallback !== symbol) {
-          barsByTf[tf] = await fetchBars(fallback, tf);
+          barsByTf[tf] = await fetchBars(fallback, tf, startDate);
         }
       }
     }
