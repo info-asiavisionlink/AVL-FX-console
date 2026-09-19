@@ -6,6 +6,7 @@ const PUBLIC_PATHS = [
   "/api/auth",
   "/api/research",        // Research API: X-Research-Token で独自認証
   "/api/monitoring/report", // Heartbeat: X-System-Token で独自認証
+  "/api/ea-registry",    // EA Registry: x-ea-registry-secret で独自認証
 ];
 
 export async function middleware(request: NextRequest) {
