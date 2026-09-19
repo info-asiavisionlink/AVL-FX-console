@@ -128,7 +128,10 @@ export function SetupPackageCard({ customerId, existingSetup }: {
     setError(null);
     setPkg(null);
 
-    const res  = await fetch(`/api/customers/${customerId}/setup`, { method: "POST" });
+    const res  = await fetch(`/api/customers/${customerId}/setup`, {
+      method:  "POST",
+      signal:  AbortSignal.timeout(28_000),
+    });
     const data = await res.json() as { ok?: boolean; package?: SetupPackage; error?: string };
 
     if (!res.ok || !data.package) {

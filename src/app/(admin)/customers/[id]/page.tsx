@@ -37,7 +37,7 @@ async function getSetupStatus(email: string) {
     if (!tvUrl || !tvKey) return null;
 
     const tvSb = createClient(tvUrl, tvKey, { auth: { autoRefreshToken: false, persistSession: false } });
-    const { data } = await tvSb.auth.admin.listUsers();
+    const { data } = await tvSb.auth.admin.listUsers({ perPage: 1000 });
     const tvUser   = data?.users?.find(u => u.email === email);
     if (!tvUser) return null;
 

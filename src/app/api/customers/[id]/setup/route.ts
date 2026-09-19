@@ -18,8 +18,9 @@ import { isAdmin, getAdminSupabase } from "@/lib/admin-auth";
 import { createClient }              from "@supabase/supabase-js";
 import { generateResearchToken }     from "@/lib/research-auth";
 
-export const dynamic    = "force-dynamic";
-export const runtime    = "nodejs";
+export const dynamic     = "force-dynamic";
+export const runtime     = "nodejs";
+export const maxDuration = 30;
 
 const TV_URL      = process.env.TV_SUPABASE_URL              ?? "";
 const TV_KEY      = process.env.TV_SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -77,8 +78,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let tvUserId: string;
   let isNewTvUser = false;
 
-  // メールで既存ユーザーを検索
-  const { data: existingUsers } = await tvSb.auth.admin.listUsers();
+  // メールで既存ユーザーを検索（listUsers はページネーション付きで検索）
+  const { data: existingUsers } = await tvSb.auth.admin.listUsers({ perPage: 1000 });
   const existingUser = existingUsers?.users?.find(u => u.email === customer.email);
 
   if (existingUser) {
@@ -239,7 +240,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   // TV ユーザーの接続 ID を確認
   const tvSb = getTvAdmin();
-  const { data: existingUsers } = await tvSb.auth.admin.listUsers();
+  const { data: existingUsers } = await tvSb.auth.admin.listUsers({ perPage: 1000 });
   const tvUser = existingUsers?.users?.find(u => u.email === customer.email);
 
   let connectionId: string | null = null;
