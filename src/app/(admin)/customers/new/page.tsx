@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { STATUS_OPTIONS, CUSTOMER_STATUS } from "@/lib/customer-status";
 
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)))
+    .map(b => chars[b % chars.length]).join("");
+}
+
 const DEFAULT_DEV_FEE      = 300_000;
 const DEFAULT_MONTHLY_FEE  = 30_000;
 const DEFAULT_TRANSFER_FEE = 500_000;
@@ -22,11 +28,13 @@ export default function NewCustomerPage() {
     email:         "",
     status:        "LEAD",
     notes:         "",
+    tv_password:   "",
     // 費用
     development_fee:  String(DEFAULT_DEV_FEE),
     management_fee:   String(DEFAULT_MONTHLY_FEE),
     transfer_fee:     String(DEFAULT_TRANSFER_FEE),
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   const set = (k: string) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -49,6 +57,7 @@ export default function NewCustomerPage() {
         email:         form.email,
         status:        form.status,
         notes:         form.notes,
+        tv_password:   form.tv_password || null,
       }),
     });
     const data = await res.json();
@@ -151,6 +160,66 @@ export default function NewCustomerPage() {
             <textarea value={form.notes} onChange={set("notes")}
               placeholder="商談内容・特記事項など" rows={3}
               style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+        </div>
+
+        {/* Trading View ログイン設定 */}
+        <div style={sectionStyle} className="space-y-4">
+          <div>
+            <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#9a9a9a" }}>
+              Trading View ログイン設定
+            </p>
+            <p className="text-xs mt-1" style={{ color: "#9a9a9a" }}>
+              顧客が Trading View にログインするためのパスワードを設定します。空欄の場合はセットアップ時に自動生成されます。
+            </p>
+          </div>
+
+          <div>
+            <label style={labelStyle}>ログインID（メールアドレス）</label>
+            <div style={{ ...inputStyle, color: form.email ? "#1a1a1a" : "#9a9a9a", display: "flex", alignItems: "center" }}>
+              {form.email || "上の「メールアドレス」と同じ"}
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>ログインパスワード</label>
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <input
+                  value={form.tv_password}
+                  onChange={set("tv_password")}
+                  type={showPassword ? "text" : "password"}
+                  placeholder="空欄の場合はセットアップ時に自動生成"
+                  style={{ ...inputStyle, paddingRight: 72 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(s => !s)}
+                  style={{
+                    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                    fontSize: 11, fontWeight: 700, color: "#9a9a9a", background: "none", border: "none", cursor: "pointer",
+                  }}
+                >
+                  {showPassword ? "隠す" : "表示"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, tv_password: generatePassword() }))}
+                style={{
+                  padding: "10px 16px", borderRadius: 10, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+                  background: "rgba(249,115,22,0.08)", color: "#f97316",
+                  border: "1.5px solid rgba(249,115,22,0.25)", cursor: "pointer",
+                }}
+              >
+                自動生成
+              </button>
+            </div>
+            {form.tv_password && showPassword && (
+              <p className="text-[10px] mt-1 font-mono" style={{ color: "#f97316" }}>
+                設定値: {form.tv_password}
+              </p>
+            )}
           </div>
         </div>
 

@@ -58,13 +58,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: customerId } = await params;
 
+  // body から指定パスワードを受け取る（省略時は既存 or auto-generate）
+  const body = await req.json().catch(() => ({})) as { password?: string };
+
   const sb   = await getAdminSupabase();
   const tvSb = getTvAdmin();
 
   // ── 1. 顧客情報取得 ──────────────────────────────────────────────
   const { data: customer, error: custErr } = await sb
     .from("customers")
-    .select("customer_code, customer_name, display_name, email, status")
+    .select("customer_code, customer_name, display_name, email, status, tv_password")
     .eq("id", customerId)
     .single();
 
@@ -72,7 +75,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "顧客が見つかりません" }, { status: 404 });
   }
 
-  const tempPassword = generateTempPassword();
+  // パスワード優先順: body指定 → 既存保存値 → 自動生成
+  const tempPassword = body.password?.trim()
+    || (customer as { tv_password?: string }).tv_password
+    || generateTempPassword();
 
   // ── 2. Trading View Supabase にユーザー作成（既存なら取得） ───────
   let tvUserId: string;
@@ -154,7 +160,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     connectionId = newConn.id;
   }
 
-  // ── 4. Research API Token 生成（Console Supabase） ───────────────
+  // ── 4. TV パスワードを Console DB に保存（後で管理者が確認できるように） ──
+  await sb.from("customers")
+    .update({ tv_password: tempPassword, updated_at: new Date().toISOString() })
+    .eq("id", customerId);
+
+  // ── 5. Research API Token 生成（Console Supabase） ───────────────
   const researchToken = generateResearchToken();
 
   // 既存トークンを無効化して新規作成

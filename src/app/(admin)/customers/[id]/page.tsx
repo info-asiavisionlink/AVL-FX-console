@@ -8,6 +8,7 @@ import { ContractCard } from "@/components/ContractCard";
 import { ResearchTokenCard } from "@/components/ResearchTokenCard";
 import { SubscriptionStatusBadge } from "@/components/SubscriptionStatusBadge";
 import { SetupPackageCard }        from "@/components/SetupPackageCard";
+import { TvLoginCard }            from "@/components/TvLoginCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -194,6 +195,21 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CustomerSystemCard key={sys.id} sys={sys} customerId={id} />
         ))}
         <AddSystemForm customerId={id} />
+      </div>
+
+      {/* TV ログイン情報 */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-base font-black" style={{ color: "#1a1a1a" }}>TV ログイン情報</h3>
+          <p className="text-xs mt-0.5" style={{ color: "#9a9a9a" }}>
+            顧客が Trading View にログインするための認証情報
+          </p>
+        </div>
+        <TvLoginCard
+          customerId={id}
+          email={customer.email}
+          tvPassword={(customer as { tv_password?: string | null }).tv_password ?? null}
+        />
       </div>
 
       {/* セットアップパッケージ */}

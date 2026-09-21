@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     email: string;
     status?: string;
     notes?: string;
+    tv_password?: string;
   };
 
   if (!body.customer_code || !body.customer_name || !body.display_name || !body.email) {
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
       email:         body.email.toLowerCase().trim(),
       status:        body.status ?? "LEAD",
       notes:         body.notes?.trim() || null,
+      tv_password:   body.tv_password?.trim() || null,
     })
     .select("*")
     .single();
